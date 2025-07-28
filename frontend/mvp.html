@@ -7,20 +7,20 @@
 
   <!-- Bootstrap 5 CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <!-- Leaflet CSS for map -->
+  <!-- Leaflet CSS -->
   <link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet" />
 
   <style>
     /* ========= CARD STYLING ========= */
-    .sensor-card {background:#f8f9fa;border:1px solid #ced4da;border-radius:.5rem;padding:1rem;margin-bottom:1rem;border-left:6px solid gray;}
-    .sensor-card.online  {border-left-color:#28a745;}     /* green  */
-    .sensor-card.offline {border-left-color:#dc3545;}     /* red    */
+    .sensor-card{background:#f8f9fa;border:1px solid #ced4da;border-radius:.5rem;padding:1rem;margin-bottom:1rem;border-left:6px solid gray;}
+    .sensor-card.online{border-left-color:#28a745;}
+    .sensor-card.offline{border-left-color:#dc3545;}
 
     /* ========= TABLE ========= */
-    .table-responsive {max-height:60vh;overflow-y:auto;}
+    .table-responsive{max-height:60vh;overflow-y:auto;}
 
-    /* ========= RADAR MAP ========= */
-    #radarMap {height:400px;border:1px solid #ced4da;border-radius:.5rem;}
+    /* ========= MAPS ========= */
+    .map-container{height:500px;border:1px solid #ced4da;border-radius:.5rem;}
   </style>
 </head>
 <body class="p-4 bg-light">
@@ -48,103 +48,164 @@
       </table>
     </div>
 
-    <!-- RADAR MAP -->
+    <!-- RADAR VIEW TABS -->
     <h2 class="mt-5 mb-3">Radar View</h2>
-    <div id="radarMap"></div>
+    <ul class="nav nav-tabs" id="radarTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="live-tab" data-bs-toggle="tab" data-bs-target="#live" type="button" role="tab">Live Feed</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#history" type="button" role="tab">Historical Data</button>
+      </li>
+    </ul>
+    <div class="tab-content border border-top-0 rounded-bottom p-3" id="radarTabsContent">
+      <div class="tab-pane fade show active" id="live" role="tabpanel">
+        <div id="radarMapLive" class="map-container"></div>
+      </div>
+      <div class="tab-pane fade" id="history" role="tabpanel">
+        <div id="radarMapHistory" class="map-container"></div>
+      </div>
+    </div>
   </div>
 
-  <!-- Bootstrap 5 JS Bundle -->
+  <!-- JS libs -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    /* ========= MOCK SENSOR DEFINITIONS ========= */
-    const sensors = [
-      {
-        id: "sensor-001",
-        location: "Syracuse HQ Roof",
-        lat: 43.0481,         // base position for the Pi
-        lon: -76.1474,
-        signalStrength: 82,
-        lastSeen: new Date().toISOString(),
-        status: "online"
-      }
-    ];
+    /* ========= CONFIG ========= */
+    const REFRESH_MS = 500; // 0.5-second update for near-real-time tracking
 
-    /* ========= HELPER FUNCTIONS ========= */
-    const rand = (min, max) => Math.random() * (max - min) + min;
-    function ago(sec){return new Date(Date.now()-sec*1000).toISOString();}
+    /* ========= SENSOR DEFINITIONS ========= */
+    const sensors=[{
+      id:"sensor-001",
+      location:"Syracuse HQ Roof",
+      lat:43.0481,
+      lon:-76.1474,
+      signalStrength:82,
+      lastSeen:new Date().toISOString(),
+      status:"online"
+    }];
 
+    /* ========= DRONE STATE ========= */
+    let dronePathCoords=[];
+    let droneMarkerLive=null;
+    let dronePolylineLive=null;
+    let dronePolylineHist=null;
+    let dronePos={lat:sensors[0].lat+rand(-0.02,0.02),lon:sensors[0].lon+rand(-0.02,0.02)};
+
+    /* ========= HELPERS ========= */
+    function rand(min,max){return Math.random()*(max-min)+min;}
     function mockDetection(){
-      const base = sensors[0];
-      return {
-        detectedAt: new Date().toISOString(),
-        sensorId: base.id,
-        location: base.location,
-        lat: base.lat + rand(-0.02,0.02),   // ~2‑3 km radius
-        lon: base.lon + rand(-0.02,0.02),
-        rssi: Math.round(rand(-95,-35)),
-        freq: rand(2.4,5.9).toFixed(2),
-        confidence: rand(0.6,0.97).toFixed(2)
+      // Simulated micro-movements (~±40 m per refresh)
+      dronePos.lat+=rand(-0.00035,0.00035);
+      dronePos.lon+=rand(-0.00035,0.00035);
+      const base=sensors[0];
+      return{
+        detectedAt:new Date().toISOString(),
+        sensorId:base.id,
+        location:base.location,
+        lat:dronePos.lat,
+        lon:dronePos.lon,
+        rssi:Math.round(rand(-95,-35)),
+        freq:rand(2.4,5.9).toFixed(2),
+        confidence:rand(0.6,0.97).toFixed(2)
       };
     }
 
-    /* ========= RENDER SENSOR CARDS ========= */
-    const grid = document.getElementById("sensorGrid");
+    /* ========= UI: SENSOR CARDS ========= */
+    const grid=document.getElementById("sensorGrid");
     function renderSensors(){
       grid.innerHTML="";
       sensors.forEach(s=>{
-        const col=document.createElement("div");
-        col.className="col-12 col-md-6 col-lg-4";
-        col.innerHTML=`<div class="sensor-card ${s.status}">
-          <h5 class="mb-1">${s.location}</h5>
-          <p class="mb-1"><strong>ID:</strong> ${s.id}</p>
-          <p class="mb-1"><strong>Signal:</strong> ${s.signalStrength}%</p>
-          <p class="mb-1"><strong>Last&nbsp;Seen:</strong> ${new Date(s.lastSeen).toLocaleString()}</p>
-          <p class="mb-0"><strong>Status:</strong> <span class="text-${s.status==='online'?'success':'danger'}">${s.status}</span></p>
-        </div>`;
-        grid.appendChild(col);
+        grid.insertAdjacentHTML('beforeend',`<div class="col-12 col-md-6 col-lg-4">
+          <div class="sensor-card ${s.status}">
+            <h5 class="mb-1">${s.location}</h5>
+            <p class="mb-1"><strong>ID:</strong> ${s.id}</p>
+            <p class="mb-1"><strong>Signal:</strong> ${s.signalStrength}%</p>
+            <p class="mb-1"><strong>Last&nbsp;Seen:</strong> ${new Date(s.lastSeen).toLocaleTimeString()}</p>
+            <p class="mb-0"><strong>Status:</strong> <span class="text-${s.status==='online'?'success':'danger'}">${s.status}</span></p>
+          </div>
+        </div>`);
       });
     }
 
-    /* ========= TABLE RENDER ========= */
-    const tableBody = document.querySelector("#detectionTable tbody");
+    /* ========= UI: TABLE ========= */
+    const tableBody=document.querySelector("#detectionTable tbody");
     function prependRow(det){
       const row=document.createElement("tr");
-      row.innerHTML=`
-        <td>${new Date(det.detectedAt).toLocaleTimeString()}</td>
+      row.innerHTML=`<td>${new Date(det.detectedAt).toLocaleTimeString()}</td>
         <td>${det.sensorId}</td>
         <td>${det.location}</td>
         <td>${det.rssi}</td>
         <td>${det.freq}</td>
         <td>${(det.confidence*100).toFixed(0)}%</td>`;
       tableBody.prepend(row);
-      if(tableBody.rows.length>100) tableBody.deleteRow(-1);
+      if(tableBody.rows.length>200) tableBody.deleteRow(-1);
     }
 
-    /* ========= MAP INITIALISATION ========= */
-    const map = L.map('radarMap').setView([43.0481,-76.1474], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-      attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+    /* ========= MAPS SETUP ========= */
+    const mapLive=L.map('radarMapLive').setView([sensors[0].lat,sensors[0].lon],13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors'}).addTo(mapLive);
 
-    function addMarker(det){
-      const marker=L.circleMarker([det.lat,det.lon],{radius:8,color:'#28a745',fillColor:'#28a745',fillOpacity:0.7});
-      marker.addTo(map).bindPopup(`Detected ${new Date(det.detectedAt).toLocaleTimeString()}<br>RSSI ${det.rssi} dBm`);
-      setTimeout(()=>{ if(map.hasLayer(marker)) map.removeLayer(marker); },5*60*1000); // remove after 5 min
+    const mapHist=L.map('radarMapHistory').setView([sensors[0].lat,sensors[0].lon],13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors'}).addTo(mapHist);
+
+    // Sensor marker on both maps
+    [mapLive,mapHist].forEach(m=>{
+      L.circleMarker([sensors[0].lat,sensors[0].lon],{radius:10,color:'#0d6efd',fill:true,fillColor:'#0d6efd',fillOpacity:1})
+        .addTo(m).bindPopup(`${sensors[0].location} (Sensor)`);
+    });
+
+    function updateDroneOnMaps(lat,lon){
+      // Live marker
+      if(!droneMarkerLive){
+        droneMarkerLive=L.circleMarker([lat,lon],{radius:7,color:'#dc3545',fillColor:'#dc3545',fillOpacity:0.85}).addTo(mapLive).bindPopup('Tracked Drone');
+      }else{
+        droneMarkerLive.setLatLng([lat,lon]);
+      }
+
+      // Path array
+      dronePathCoords.push([lat,lon]);
+
+      // Update live polyline
+      if(!dronePolylineLive){
+        dronePolylineLive=L.polyline(dronePathCoords,{color:'#dc3545',weight:2}).addTo(mapLive);
+      }else{
+        dronePolylineLive.setLatLngs(dronePathCoords);
+      }
+
+      // History polyline
+      if(!dronePolylineHist){
+        dronePolylineHist=L.polyline(dronePathCoords,{color:'#dc3545',weight:2}).addTo(mapHist);
+      }else{
+        dronePolylineHist.setLatLngs(dronePathCoords);
+      }
     }
 
-    /* ========= INITIALISE DASHBOARD ========= */
+    /* ========= INITIALISE ========= */
     renderSensors();
+    updateDroneOnMaps(dronePos.lat,dronePos.lon);
+
+    // Resize maps on tab switch (Leaflet quirk)
+    document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(btn=>{
+      btn.addEventListener('shown.bs.tab',()=>{
+        setTimeout(()=>{mapLive.invalidateSize();mapHist.invalidateSize();},50);
+      });
+    });
+
+    /* ========= REAL-TIME LOOP ========= */
     setInterval(()=>{
       const det=mockDetection();
       prependRow(det);
-      addMarker(det);
+      updateDroneOnMaps(det.lat,det.lon);
+
+      // Update sensor health
       const s=sensors[0];
       s.lastSeen=det.detectedAt;
-      s.signalStrength=Math.min(100,Math.max(0,s.signalStrength+Math.round(rand(-3,3))));
+      s.signalStrength=Math.min(100,Math.max(0,s.signalStrength+Math.round(rand(-2,2))));
       renderSensors();
-    },5000);
+    }, REFRESH_MS);
   </script>
 </body>
 </html>
