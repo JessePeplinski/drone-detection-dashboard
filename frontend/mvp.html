@@ -19,8 +19,8 @@
     /* ========= TABLE ========= */
     .table-responsive{max-height:60vh;overflow-y:auto;}
 
-    /* ========= MAPS ========= */
-    .map-container{height:500px;border:1px solid #ced4da;border-radius:.5rem;}
+    /* ========= MAP ========= */
+    #radarMap{height:500px;border:1px solid #ced4da;border-radius:.5rem;}
   </style>
 </head>
 <body class="p-4 bg-light">
@@ -48,24 +48,9 @@
       </table>
     </div>
 
-    <!-- RADAR VIEW TABS -->
-    <h2 class="mt-5 mb-3">Radar View</h2>
-    <ul class="nav nav-tabs" id="radarTabs" role="tablist">
-      <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="live-tab" data-bs-toggle="tab" data-bs-target="#live" type="button" role="tab">Live Feed</button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#history" type="button" role="tab">Historical Data</button>
-      </li>
-    </ul>
-    <div class="tab-content border border-top-0 rounded-bottom p-3" id="radarTabsContent">
-      <div class="tab-pane fade show active" id="live" role="tabpanel">
-        <div id="radarMapLive" class="map-container"></div>
-      </div>
-      <div class="tab-pane fade" id="history" role="tabpanel">
-        <div id="radarMapHistory" class="map-container"></div>
-      </div>
-    </div>
+    <!-- RADAR VIEW -->
+    <h2 class="mt-5 mb-3">Live Radar View</h2>
+    <div id="radarMap"></div>
   </div>
 
   <!-- JS libs -->
@@ -95,9 +80,8 @@
 
     /* ========= DRONE STATE ========= */
     let dronePathCoords=[];
-    let droneMarkerLive=null;
-    let dronePolylineLive=null;
-    let dronePolylineHist=null;
+    let droneMarker=null;
+    let dronePolyline=null;
     let dronePos={lat:sensors[0].lat+rand(-0.02,0.02),lon:sensors[0].lon+rand(-0.02,0.02)};
 
     /* ========= HELPERS ========= */
@@ -149,55 +133,39 @@
       if(tableBody.rows.length>200) tableBody.deleteRow(-1);
     }
 
-    /* ========= MAPS SETUP ========= */
-    const mapLive=L.map('radarMapLive').setView([sensors[0].lat,sensors[0].lon],13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors'}).addTo(mapLive);
+    /* ========= MAP SETUP ========= */
+    const map=L.map('radarMap').setView([sensors[0].lat,sensors[0].lon],13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
 
-    const mapHist=L.map('radarMapHistory').setView([sensors[0].lat,sensors[0].lon],13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors'}).addTo(mapHist);
+    // Sensor marker
+    L.circleMarker([sensors[0].lat,sensors[0].lon],{radius:10,color:'#0d6efd',fill:true,fillColor:'#0d6efd',fillOpacity:1})
+      .addTo(map).bindPopup(`${sensors[0].location} (Sensor)`);
 
-    [mapLive,mapHist].forEach(m=>{
-      L.circleMarker([sensors[0].lat,sensors[0].lon],{radius:10,color:'#0d6efd',fill:true,fillColor:'#0d6efd',fillOpacity:1})
-        .addTo(m).bindPopup(`${sensors[0].location} (Sensor)`);
-    });
-
-    function updateDroneOnMaps(lat,lon){
-      if(!droneMarkerLive){
-        droneMarkerLive=L.circleMarker([lat,lon],{radius:7,color:'#dc3545',fillColor:'#dc3545',fillOpacity:0.85}).addTo(mapLive).bindPopup('Tracked Drone');
+    function updateDroneOnMap(lat,lon){
+      if(!droneMarker){
+        droneMarker=L.circleMarker([lat,lon],{radius:7,color:'#dc3545',fillColor:'#dc3545',fillOpacity:0.85}).addTo(map).bindPopup('Tracked Drone');
       }else{
-        droneMarkerLive.setLatLng([lat,lon]);
+        droneMarker.setLatLng([lat,lon]);
       }
 
       dronePathCoords.push([lat,lon]);
 
-      if(!dronePolylineLive){
-        dronePolylineLive=L.polyline(dronePathCoords,{color:'#dc3545',weight:2}).addTo(mapLive);
+      if(!dronePolyline){
+        dronePolyline=L.polyline(dronePathCoords,{color:'#dc3545',weight:2}).addTo(map);
       }else{
-        dronePolylineLive.setLatLngs(dronePathCoords);
-      }
-
-      if(!dronePolylineHist){
-        dronePolylineHist=L.polyline(dronePathCoords,{color:'#dc3545',weight:2}).addTo(mapHist);
-      }else{
-        dronePolylineHist.setLatLngs(dronePathCoords);
+        dronePolyline.setLatLngs(dronePathCoords);
       }
     }
 
     /* ========= INITIALISE ========= */
     renderSensors();
-    updateDroneOnMaps(dronePos.lat,dronePos.lon);
-
-    document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(btn=>{
-      btn.addEventListener('shown.bs.tab',()=>{
-        setTimeout(()=>{mapLive.invalidateSize();mapHist.invalidateSize();},50);
-      });
-    });
+    updateDroneOnMap(dronePos.lat,dronePos.lon);
 
     /* ========= REAL‑TIME LOOP ========= */
     setInterval(()=>{
       const det=mockDetection();
       prependRow(det);
-      updateDroneOnMaps(det.lat,det.lon);
+      updateDroneOnMap(det.lat,det.lon);
 
       // Update sensor health
       const s=sensors[0];
