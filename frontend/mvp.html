@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Drone Detection Dashboard – MVP</title>
+  <title>Drone Detection Dashboard – Real‑Time</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <!-- Bootstrap 5 CSS -->
@@ -25,10 +25,14 @@
 </head>
 <body class="p-4 bg-light">
   <div class="container-xl">
-    <h1 class="mb-4">Drone Detection Dashboard – MVP</h1>
+    <h1 class="mb-4">Drone Detection Dashboard – Real‑Time</h1>
 
     <!-- SENSOR STATUS GRID -->
     <div id="sensorGrid" class="row gy-4 mb-5"></div>
+
+    <!-- RADAR VIEW -->
+    <h2 class="mt-5 mb-3">Live Radar View</h2>
+    <div id="radarMap"></div>
 
     <!-- DETECTION TABLE -->
     <h2 class="mb-3">Live Drone Detections</h2>
@@ -48,9 +52,6 @@
       </table>
     </div>
 
-    <!-- RADAR VIEW -->
-    <h2 class="mt-5 mb-3">Live Radar View</h2>
-    <div id="radarMap"></div>
   </div>
 
   <!-- JS libs -->
@@ -59,13 +60,14 @@
 
   <script>
     /* ========= CONFIG ========= */
-    const REFRESH_MS = 500; // 0.5‑second update for near‑real‑time tracking
+    const REFRESH_MS = 500;              // update speed for mock feed
+    // const WS_URL = "wss://your‑real‑endpoint"; // uncomment when ready
 
     /* ========= TIME HELPER ========= */
-    function formatTimeMs(date){
-      const ms = String(date.getMilliseconds()).padStart(3,'0');
-      return date.toLocaleTimeString([], {hour12:false}) + '.' + ms;
-    }
+    const fmtTime = d => {
+      const ms = String(d.getMilliseconds()).padStart(3,'0');
+      return d.toLocaleTimeString([], {hour12:false}) + '.' + ms;
+    };
 
     /* ========= SENSOR DEFINITIONS ========= */
     const sensors=[{
@@ -79,51 +81,51 @@
     }];
 
     /* ========= DRONE STATE ========= */
-    let dronePathCoords=[];
+    const rand=(min,max)=>Math.random()*(max-min)+min;
+    let dronePos={lat:sensors[0].lat+rand(-0.02,0.02), lon:sensors[0].lon+rand(-0.02,0.02)};
+    let pathCoords=[];
     let droneMarker=null;
-    let dronePolyline=null;
-    let dronePos={lat:sensors[0].lat+rand(-0.02,0.02),lon:sensors[0].lon+rand(-0.02,0.02)};
+    let polyline=null;
 
-    /* ========= HELPERS ========= */
-    function rand(min,max){return Math.random()*(max-min)+min;}
-    function mockDetection(){
-      dronePos.lat+=rand(-0.00035,0.00035);
-      dronePos.lon+=rand(-0.00035,0.00035);
-      const base=sensors[0];
-      return{
-        detectedAt:new Date().toISOString(),
-        sensorId:base.id,
-        location:base.location,
-        lat:dronePos.lat,
-        lon:dronePos.lon,
-        rssi:Math.round(rand(-95,-35)),
-        freq:rand(2.4,5.9).toFixed(2),
-        confidence:rand(0.6,0.97).toFixed(2)
+    /* ========= MOCK DATA ========= */
+    const mockDetection = () => {
+      dronePos.lat += rand(-0.00035,0.00035);
+      dronePos.lon += rand(-0.00035,0.00035);
+      const s = sensors[0];
+      return {
+        detectedAt: new Date().toISOString(),
+        sensorId: s.id,
+        location: s.location,
+        lat: dronePos.lat,
+        lon: dronePos.lon,
+        rssi: Math.round(rand(-95,-35)),
+        freq: rand(2.4,5.9).toFixed(2),
+        confidence: rand(0.6,0.97).toFixed(2)
       };
-    }
+    };
 
-    /* ========= UI: SENSOR CARDS ========= */
-    const grid=document.getElementById("sensorGrid");
-    function renderSensors(){
-      grid.innerHTML="";
+    /* ========= UI RENDERING ========= */
+    const sensorGrid = document.getElementById('sensorGrid');
+    const renderSensors = () => {
+      sensorGrid.innerHTML='';
       sensors.forEach(s=>{
-        grid.insertAdjacentHTML('beforeend',`<div class="col-12 col-md-6 col-lg-4">
-          <div class="sensor-card ${s.status}">
-            <h5 class="mb-1">${s.location}</h5>
-            <p class="mb-1"><strong>ID:</strong> ${s.id}</p>
-            <p class="mb-1"><strong>Signal:</strong> ${s.signalStrength}%</p>
-            <p class="mb-1"><strong>Last&nbsp;Seen:</strong> ${formatTimeMs(new Date(s.lastSeen))}</p>
-            <p class="mb-0"><strong>Status:</strong> <span class="text-${s.status==='online'?'success':'danger'}">${s.status}</span></p>
-          </div>
-        </div>`);
+        sensorGrid.insertAdjacentHTML('beforeend',`
+          <div class="col-12 col-md-6 col-lg-4">
+            <div class="sensor-card ${s.status}">
+              <h5 class="mb-1">${s.location}</h5>
+              <p class="mb-1"><strong>ID:</strong> ${s.id}</p>
+              <p class="mb-1"><strong>Signal:</strong> ${s.signalStrength}%</p>
+              <p class="mb-1"><strong>Last&nbsp;Seen:</strong> ${fmtTime(new Date(s.lastSeen))}</p>
+              <p class="mb-0"><strong>Status:</strong> <span class="text-${s.status==='online'?'success':'danger'}">${s.status}</span></p>
+            </div>
+          </div>`);
       });
-    }
+    };
 
-    /* ========= UI: TABLE ========= */
-    const tableBody=document.querySelector("#detectionTable tbody");
-    function prependRow(det){
-      const row=document.createElement("tr");
-      row.innerHTML=`<td>${formatTimeMs(new Date(det.detectedAt))}</td>
+    const tableBody = document.querySelector('#detectionTable tbody');
+    const prependRow = det => {
+      const row=document.createElement('tr');
+      row.innerHTML=`<td>${fmtTime(new Date(det.detectedAt))}</td>
         <td>${det.sensorId}</td>
         <td>${det.location}</td>
         <td>${det.rssi}</td>
@@ -131,48 +133,51 @@
         <td>${(det.confidence*100).toFixed(0)}%</td>`;
       tableBody.prepend(row);
       if(tableBody.rows.length>200) tableBody.deleteRow(-1);
-    }
+    };
 
-    /* ========= MAP SETUP ========= */
-    const map=L.map('radarMap').setView([sensors[0].lat,sensors[0].lon],13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+    /* ========= MAP ========= */
+    const map = L.map('radarMap').setView([sensors[0].lat,sensors[0].lon], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
 
-    // Sensor marker
-    L.circleMarker([sensors[0].lat,sensors[0].lon],{radius:10,color:'#0d6efd',fill:true,fillColor:'#0d6efd',fillOpacity:1})
-      .addTo(map).bindPopup(`${sensors[0].location} (Sensor)`);
+    // sensor markers only (no coverage rings)
+    sensors.forEach(s => {
+      L.circleMarker([s.lat,s.lon], {radius:10,color:'#0d6efd',fill:true,fillColor:'#0d6efd',fillOpacity:1})
+        .addTo(map).bindPopup(`${s.location} (Sensor)`);
+    });
 
-    function updateDroneOnMap(lat,lon){
+    const updateDroneOnMap = (lat,lon) => {
       if(!droneMarker){
-        droneMarker=L.circleMarker([lat,lon],{radius:7,color:'#dc3545',fillColor:'#dc3545',fillOpacity:0.85}).addTo(map).bindPopup('Tracked Drone');
-      }else{
+        droneMarker = L.circleMarker([lat,lon], {radius:7,color:'#dc3545',fillColor:'#dc3545',fillOpacity:0.85}).addTo(map).bindPopup('Tracked Drone');
+      } else {
         droneMarker.setLatLng([lat,lon]);
       }
 
-      dronePathCoords.push([lat,lon]);
-
-      if(!dronePolyline){
-        dronePolyline=L.polyline(dronePathCoords,{color:'#dc3545',weight:2}).addTo(map);
-      }else{
-        dronePolyline.setLatLngs(dronePathCoords);
+      pathCoords.push([lat,lon]);
+      if(!polyline){
+        polyline = L.polyline(pathCoords, {color:'#dc3545',weight:2}).addTo(map);
+      } else {
+        polyline.setLatLngs(pathCoords);
       }
-    }
+      // we keep the camera fixed; no auto fitBounds or arrows
+    };
 
-    /* ========= INITIALISE ========= */
-    renderSensors();
-    updateDroneOnMap(dronePos.lat,dronePos.lon);
-
-    /* ========= REAL‑TIME LOOP ========= */
-    setInterval(()=>{
-      const det=mockDetection();
+    /* ========= UPDATE HANDLER ========= */
+    const handleDetection = det => {
       prependRow(det);
       updateDroneOnMap(det.lat,det.lon);
 
-      // Update sensor health
-      const s=sensors[0];
-      s.lastSeen=det.detectedAt;
-      s.signalStrength=Math.min(100,Math.max(0,s.signalStrength+Math.round(rand(-2,2))));
+      const s = sensors.find(x=>x.id===det.sensorId) || sensors[0];
+      s.lastSeen = det.detectedAt;
+      s.signalStrength = Math.min(100, Math.max(0, s.signalStrength + Math.round(rand(-2,2))));
       renderSensors();
-    }, REFRESH_MS);
+    };
+
+    // mock interval (still active until WS impl)
+    setInterval(()=>handleDetection(mockDetection()), REFRESH_MS);
+
+    /* ========= INIT ========= */
+    renderSensors();
+    updateDroneOnMap(dronePos.lat, dronePos.lon);
   </script>
 </body>
 </html>
