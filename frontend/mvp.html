@@ -74,7 +74,13 @@
 
   <script>
     /* ========= CONFIG ========= */
-    const REFRESH_MS = 500; // 0.5-second update for near-real-time tracking
+    const REFRESH_MS = 500; // 0.5‑second update for near‑real‑time tracking
+
+    /* ========= TIME HELPER ========= */
+    function formatTimeMs(date){
+      const ms = String(date.getMilliseconds()).padStart(3,'0');
+      return date.toLocaleTimeString([], {hour12:false}) + '.' + ms;
+    }
 
     /* ========= SENSOR DEFINITIONS ========= */
     const sensors=[{
@@ -97,7 +103,6 @@
     /* ========= HELPERS ========= */
     function rand(min,max){return Math.random()*(max-min)+min;}
     function mockDetection(){
-      // Simulated micro-movements (~±40 m per refresh)
       dronePos.lat+=rand(-0.00035,0.00035);
       dronePos.lon+=rand(-0.00035,0.00035);
       const base=sensors[0];
@@ -123,7 +128,7 @@
             <h5 class="mb-1">${s.location}</h5>
             <p class="mb-1"><strong>ID:</strong> ${s.id}</p>
             <p class="mb-1"><strong>Signal:</strong> ${s.signalStrength}%</p>
-            <p class="mb-1"><strong>Last&nbsp;Seen:</strong> ${new Date(s.lastSeen).toLocaleTimeString()}</p>
+            <p class="mb-1"><strong>Last&nbsp;Seen:</strong> ${formatTimeMs(new Date(s.lastSeen))}</p>
             <p class="mb-0"><strong>Status:</strong> <span class="text-${s.status==='online'?'success':'danger'}">${s.status}</span></p>
           </div>
         </div>`);
@@ -134,7 +139,7 @@
     const tableBody=document.querySelector("#detectionTable tbody");
     function prependRow(det){
       const row=document.createElement("tr");
-      row.innerHTML=`<td>${new Date(det.detectedAt).toLocaleTimeString()}</td>
+      row.innerHTML=`<td>${formatTimeMs(new Date(det.detectedAt))}</td>
         <td>${det.sensorId}</td>
         <td>${det.location}</td>
         <td>${det.rssi}</td>
@@ -151,31 +156,26 @@
     const mapHist=L.map('radarMapHistory').setView([sensors[0].lat,sensors[0].lon],13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors'}).addTo(mapHist);
 
-    // Sensor marker on both maps
     [mapLive,mapHist].forEach(m=>{
       L.circleMarker([sensors[0].lat,sensors[0].lon],{radius:10,color:'#0d6efd',fill:true,fillColor:'#0d6efd',fillOpacity:1})
         .addTo(m).bindPopup(`${sensors[0].location} (Sensor)`);
     });
 
     function updateDroneOnMaps(lat,lon){
-      // Live marker
       if(!droneMarkerLive){
         droneMarkerLive=L.circleMarker([lat,lon],{radius:7,color:'#dc3545',fillColor:'#dc3545',fillOpacity:0.85}).addTo(mapLive).bindPopup('Tracked Drone');
       }else{
         droneMarkerLive.setLatLng([lat,lon]);
       }
 
-      // Path array
       dronePathCoords.push([lat,lon]);
 
-      // Update live polyline
       if(!dronePolylineLive){
         dronePolylineLive=L.polyline(dronePathCoords,{color:'#dc3545',weight:2}).addTo(mapLive);
       }else{
         dronePolylineLive.setLatLngs(dronePathCoords);
       }
 
-      // History polyline
       if(!dronePolylineHist){
         dronePolylineHist=L.polyline(dronePathCoords,{color:'#dc3545',weight:2}).addTo(mapHist);
       }else{
@@ -187,14 +187,13 @@
     renderSensors();
     updateDroneOnMaps(dronePos.lat,dronePos.lon);
 
-    // Resize maps on tab switch (Leaflet quirk)
     document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(btn=>{
       btn.addEventListener('shown.bs.tab',()=>{
         setTimeout(()=>{mapLive.invalidateSize();mapHist.invalidateSize();},50);
       });
     });
 
-    /* ========= REAL-TIME LOOP ========= */
+    /* ========= REAL‑TIME LOOP ========= */
     setInterval(()=>{
       const det=mockDetection();
       prependRow(det);
