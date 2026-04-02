@@ -78,11 +78,14 @@ Open [http://localhost:8000](http://localhost:8000) in your browser. The simulat
     └── app.js               # WebSocket client + map rendering
 ```
 
+## Live Demo
+
+**[https://web-production-6e2519.up.railway.app](https://web-production-6e2519.up.railway.app)**
+
 ## Deployment
 
-Configured for Railway deployment:
+Deployed on [Railway](https://railway.app). To deploy your own instance:
 
-```bash
-# Push to GitHub, then connect repo in Railway
-# Auto-detects Python, installs deps, starts with Procfile
-```
+1. Fork this repo
+2. Create a new project in Railway and connect the GitHub repo
+3. Railway auto-detects Python, installs dependencies, and starts with the Procfile
