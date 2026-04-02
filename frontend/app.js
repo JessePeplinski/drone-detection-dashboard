@@ -1,5 +1,6 @@
 /* ========= CONFIG ========= */
-const WS_URL = `ws://${window.location.host}/ws`;
+const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const WS_URL = `${wsProto}//${window.location.host}/ws`;
 const ZONE_CENTER = [43.0381, -76.1354];
 const ZONE_RADIUS_M = 500;
 
